@@ -99,3 +99,11 @@ Dozens of persistent trigger/waypoint objects
 Redundant spawn checks in empty areas
 
 For a PW server, this approach is the optimal choice. It scales well, uses minimal resources, and provides the most immersive random encounter experience.
+
+Use this DelayCommand System When:
+✅ You want truly random encounters during exploration
+✅ You want minimal setup/maintenance overhead
+✅ Server performance is a priority
+✅ You want organic, player-centric spawning
+✅ You're building a large PW with many areas
+✅ You want unpredictable gameplay

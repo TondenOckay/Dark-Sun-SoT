@@ -1,0 +1,294 @@
+// ============================================================================
+// dse_inc
+// ============================================================================
+// Include file for encounter system constants and functions
+// This file contains all shared variables, constants, and helper functions
+// used by the random encounter system.
+// ============================================================================
+
+// ============================================================================
+// CONSTANTS - These define key values used throughout the encounter system
+// ============================================================================
+
+// Tag for the invisible effect applied to players - used to identify and remove it
+const string ENCOUNTER_EFFECT_TAG = "ENCOUNTER_CHECKER";
+
+// Tag assigned to all spawned encounter creatures for identification
+const string ENCOUNTER_SPAWN_TAG = "ENCOUNTER_SPAWN";
+
+// Variable name to track if a player currently has active encounter spawns
+const string VAR_ENCOUNTER_ACTIVE = "ENCOUNTER_ACTIVE";
+
+// Variable name to store each player's unique ID number
+const string VAR_PLAYER_ID = "ENCOUNTER_PLAYER_ID";
+
+// Variable name to track the last time a creature was interacted with
+const string VAR_LAST_INTERACTION = "LAST_INTERACTION";
+
+// Time in seconds between encounter checks (120.0 = 2 minutes)
+const float ENCOUNTER_CHECK_INTERVAL = 120.0;
+
+// Time in seconds before inactive creatures despawn (240.0 = 4 minutes)
+const float DESPAWN_TIME = 240.0;
+
+// Distance in meters to check for nearby players (20.0 meters)
+const float PROXIMITY_CHECK = 20.0;
+
+// Percentage chance for an encounter to occur (20 = 20%)
+const int ENCOUNTER_CHANCE = 20;
+
+// ============================================================================
+// ENCOUNTER ENTRY STRUCTURE
+// ============================================================================
+// This structure holds information about a single encounter type
+// sResRef: The blueprint ResRef of the creature to spawn
+// nWeight: Used for weighted random selection (currently unused but available)
+// ============================================================================
+struct EncounterEntry
+{
+    string sResRef;  // The creature's blueprint ResRef from the palette
+    int nWeight;     // Weight for random selection (higher = more likely)
+};
+
+// ============================================================================
+// COMMON ENCOUNTER TABLE
+// ============================================================================
+// Returns a common encounter based on a d100 roll
+// Common encounters have a 70% chance of being selected when an encounter triggers
+// 
+// Parameters:
+//   nRoll - A number from 1-100 determining which creature to select
+// 
+// Returns:
+//   EncounterEntry structure containing the creature's ResRef
+// ============================================================================
+struct EncounterEntry GetCommonEncounter(int nRoll)
+{
+    struct EncounterEntry entry;
+    
+    // Distribute the 1-100 roll across different creature types
+    // Each creature gets a 20% slice of the probability
+    
+    if (nRoll <= 20) {
+        entry.sResRef = "nw_goblin001";      // 1-20: Goblin
+    } else if (nRoll <= 40) {
+        entry.sResRef = "nw_kobold001";      // 21-40: Kobold
+    } else if (nRoll <= 60) {
+        entry.sResRef = "nw_wolf";           // 41-60: Wolf
+    } else if (nRoll <= 80) {
+        entry.sResRef = "nw_rat001";         // 61-80: Rat
+    } else {
+        entry.sResRef = "nw_skeleton";       // 81-100: Skeleton
+    }
+    
+    return entry;
+}
+
+// ============================================================================
+// UNCOMMON ENCOUNTER TABLE
+// ============================================================================
+// Returns an uncommon encounter based on a d100 roll
+// Uncommon encounters have a 25% chance of being selected when an encounter triggers
+// These are moderately challenging creatures
+// 
+// Parameters:
+//   nRoll - A number from 1-100 determining which creature to select
+// 
+// Returns:
+//   EncounterEntry structure containing the creature's ResRef
+// ============================================================================
+struct EncounterEntry GetUncommonEncounter(int nRoll)
+{
+    struct EncounterEntry entry;
+    
+    // Distribute the 1-100 roll across different creature types
+    // Each creature gets a 25% slice of the probability
+    
+    if (nRoll <= 25) {
+        entry.sResRef = "nw_orc001";         // 1-25: Orc
+    } else if (nRoll <= 50) {
+        entry.sResRef = "nw_bugbear";        // 26-50: Bugbear
+    } else if (nRoll <= 75) {
+        entry.sResRef = "nw_zombie01";       // 51-75: Zombie
+    } else {
+        entry.sResRef = "nw_direwolf";       // 76-100: Dire Wolf
+    }
+    
+    return entry;
+}
+
+// ============================================================================
+// RARE ENCOUNTER TABLE
+// ============================================================================
+// Returns a rare encounter based on a d100 roll
+// Rare encounters have a 5% chance of being selected when an encounter triggers
+// These are challenging creatures that should pose a significant threat
+// 
+// Parameters:
+//   nRoll - A number from 1-100 determining which creature to select
+// 
+// Returns:
+//   EncounterEntry structure containing the creature's ResRef
+// ============================================================================
+struct EncounterEntry GetRareEncounter(int nRoll)
+{
+    struct EncounterEntry entry;
+    
+    // Distribute the 1-100 roll across different creature types
+    // Each creature gets roughly a 33% slice of the probability
+    
+    if (nRoll <= 33) {
+        entry.sResRef = "nw_ogre";           // 1-33: Ogre
+    } else if (nRoll <= 66) {
+        entry.sResRef = "nw_troll";          // 34-66: Troll
+    } else {
+        entry.sResRef = "nw_umberhulk";      // 67-100: Umber Hulk
+    }
+    
+    return entry;
+}
+
+// ============================================================================
+// GET LOWEST ID PLAYER IN PROXIMITY
+// ============================================================================
+// Finds the player with the lowest ID number within 20 meters of the given player
+// This ensures only one player in a group runs the encounter script
+// 
+// How it works:
+// 1. Start by assuming the input player has the lowest ID
+// 2. Loop through all PCs in the world
+// 3. Check if each PC is in the same area and within 20 meters
+// 4. If they have a lower ID, they become the new "lowest ID player"
+// 5. Return the player with the lowest ID found
+// 
+// Parameters:
+//   oPlayer - The player to check proximity around
+// 
+// Returns:
+//   The player object with the lowest ID within 20 meters (might be oPlayer itself)
+// ============================================================================
+object GetLowestIDPlayerInProximity(object oPlayer)
+{
+    // Start by assuming this player is the lowest
+    object oLowestPlayer = oPlayer;
+    int nLowestID = GetLocalInt(oPlayer, VAR_PLAYER_ID);
+    
+    // Get the area the player is in for comparison
+    object oArea = GetArea(oPlayer);
+    
+    // Start looping through all PCs in the game world
+    object oPC = GetFirstPC();
+    
+    while (GetIsObjectValid(oPC))
+    {
+        // Only check PCs that aren't the original player and are in the same area
+        if (oPC != oPlayer && GetArea(oPC) == oArea)
+        {
+            // Calculate distance between the two players
+            float fDistance = GetDistanceBetween(oPlayer, oPC);
+            
+            // Check if they're within 20 meters and the distance is valid (> 0)
+            if (fDistance <= PROXIMITY_CHECK && fDistance > 0.0)
+            {
+                // Get this player's ID
+                int nID = GetLocalInt(oPC, VAR_PLAYER_ID);
+                
+                // If their ID is lower, they become the new lowest
+                if (nID < nLowestID)
+                {
+                    nLowestID = nID;
+                    oLowestPlayer = oPC;
+                }
+            }
+        }
+        
+        // Move to the next PC in the world
+        oPC = GetNextPC();
+    }
+    
+    // Return whichever player had the lowest ID
+    return oLowestPlayer;
+}
+
+// ============================================================================
+// HAS ACTIVE ENCOUNTER SPAWNS
+// ============================================================================
+// Checks if a player currently has active encounter creatures spawned
+// This prevents multiple encounters from spawning simultaneously for one player
+// 
+// Parameters:
+//   oPlayer - The player to check
+// 
+// Returns:
+//   TRUE if the player has active spawns, FALSE otherwise
+// ============================================================================
+int HasActiveEncounterSpawns(object oPlayer)
+{
+    // Retrieve the stored integer variable (0 = FALSE, 1 = TRUE)
+    return GetLocalInt(oPlayer, VAR_ENCOUNTER_ACTIVE);
+}
+
+// ============================================================================
+// SET ENCOUNTER ACTIVE
+// ============================================================================
+// Marks whether a player currently has active encounter creatures
+// Used to prevent multiple simultaneous encounters
+// 
+// Parameters:
+//   oPlayer - The player to set the status for
+//   bActive - TRUE if encounters are active, FALSE otherwise
+// ============================================================================
+void SetEncounterActive(object oPlayer, int bActive)
+{
+    // Store the active status as an integer on the player object
+    SetLocalInt(oPlayer, VAR_ENCOUNTER_ACTIVE, bActive);
+}
+
+// ============================================================================
+// UPDATE CREATURE INTERACTION
+// ============================================================================
+// Updates the timestamp of the last interaction with a creature
+// Used to track when creatures should despawn due to inactivity
+// 
+// Note: Uses game time hours converted to seconds as a timestamp
+// This prevents creatures from despawning during active combat
+// 
+// Parameters:
+//   oCreature - The creature whose interaction time should be updated
+// ============================================================================
+void UpdateCreatureInteraction(object oCreature)
+{
+    // Get current game time in hours, convert to seconds, then to integer
+    // Store this as the last interaction timestamp
+    SetLocalInt(oCreature, VAR_LAST_INTERACTION, FloatToInt(HoursToSeconds(GetTimeHour())));
+}
+
+// ============================================================================
+// GET SPAWN DISTANCE
+// ============================================================================
+// Determines how far from the player creatures should spawn
+// Uses weighted probabilities:
+//   - 15% chance: 5 meters (close)
+//   - 70% chance: 10-20 meters (medium distance, random)
+//   - 15% chance: 30 meters (far)
+// 
+// Returns:
+//   Float value representing distance in meters
+// ============================================================================
+float GetSpawnDistance()
+{
+    // Roll d100 (1-100)
+    int nRoll = d100();
+    
+    if (nRoll <= 15) {
+        // 1-15: Close spawn at 5 meters
+        return 5.0;
+    } else if (nRoll <= 85) {
+        // 16-85: Medium distance spawn
+        // Random(11) gives 0-10, add 10 to get 10-20 meters
+        return IntToFloat(Random(11) + 10);
+    } else {
+        // 86-100: Far spawn at 30 meters
+        return 30.0;
+    }
+}

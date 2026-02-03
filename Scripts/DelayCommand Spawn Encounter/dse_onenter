@@ -1,1 +1,83 @@
+// ============================================================================
+// dse_onenter
+// ============================================================================
+// AREA EVENT: OnEnter
+// This script fires when any object enters the area
+// 
+// Purpose:
+// - Assigns unique IDs to players who don't have one
+// - Applies an invisible, permanent effect to track encounter eligibility
+// - Starts the 2-minute encounter check cycle
+// 
+// How to use:
+// Place this script in the OnEnter event of any area where you want
+// random encounters to occur
+// ============================================================================
 
+#include "dse_inc"
+
+void main()
+{
+    // Get the object that just entered the area
+    object oPC = GetEnteringObject();
+    
+    // Safety check: Only process player characters, ignore NPCs/creatures
+    if (!GetIsPC(oPC)) return;
+    
+    // ========================================================================
+    // ASSIGN UNIQUE PLAYER ID
+    // ========================================================================
+    // Each player needs a unique ID to determine priority in groups
+    // We only assign this if they don't already have one
+    // ========================================================================
+    if (!GetLocalInt(oPC, VAR_PLAYER_ID))
+    {
+        // Get the player's account name (the login name, not character name)
+        string sAccount = GetPCPlayerName(oPC);
+        
+        // Get the character's name
+        string sCharacter = GetName(oPC);
+        
+        // Create a pseudo-unique ID by combining parts of both names
+        // GetStringLeft extracts the first 4 characters
+        // StringToInt converts text to a number (non-numbers become 0)
+        // We multiply account portion by 1000 to ensure uniqueness
+        int nID = (StringToInt(GetStringLeft(sAccount, 4)) * 1000) + 
+                  (StringToInt(GetStringLeft(sCharacter, 4)));
+        
+    // Store this ID on the player object permanently
+    SetLocalInt(oPC, VAR_PLAYER_ID, nID);
+    }
+    
+    // ========================================================================
+    // APPLY INVISIBLE ENCOUNTER EFFECT
+    // ========================================================================
+    // This effect serves as a marker that the player is in an encounter area
+    // The effect is:
+    // - Invisible (uses cutscene invisibility VFX which shows nothing)
+    // - Supernatural (cannot be dispelled by normal means)
+    // - Tagged (so we can find and remove it later)
+    // - Permanent (lasts until removed manually)
+    // ========================================================================
+    
+    // Create the visual effect (even though it's invisible, we need a VFX type)
+    effect eEncounter = EffectVisualEffect(VFX_DUR_CUTSCENE_INVISIBILITY);
+    
+    // Make it supernatural so it can't be dispelled
+    eEncounter = SupernaturalEffect(eEncounter);
+    
+    // Tag it so we can identify and remove it specifically
+    eEncounter = TagEffect(eEncounter, ENCOUNTER_EFFECT_TAG);
+    
+    // Apply the effect permanently to the player
+    ApplyEffectToObject(DURATION_TYPE_PERMANENT, eEncounter, oPC);
+    
+    // ========================================================================
+    // START ENCOUNTER CHECK CYCLE
+    // ========================================================================
+    // Schedule the first encounter check to run after 2 minutes
+    // The encounter_check script will then schedule itself repeatedly
+    // DelayCommand waits for the specified seconds, then executes the script
+    // ========================================================================
+    DelayCommand(ENCOUNTER_CHECK_INTERVAL, ExecuteScript("encounter_check", oPC));
+}

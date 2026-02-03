@@ -1,0 +1,58 @@
+// ============================================================================
+// dse_onexit
+// ============================================================================
+// AREA EVENT: OnExit
+// This script fires when any object exits the area
+// 
+// Purpose:
+// - Removes the invisible encounter effect when players leave
+// - Clears any active encounter status
+// - Stops the encounter check cycle (by removing the effect that triggers it)
+// 
+// How to use:
+// Place this script in the OnExit event of any area where you have
+// the encounter_onenter script
+// ============================================================================
+
+#include "dse_inc"
+
+void main()
+{
+    // Get the object that is leaving the area
+    object oPC = GetExitingObject();
+    
+    // Safety check: Only process player characters
+    if (!GetIsPC(oPC)) return;
+    
+    // ========================================================================
+    // REMOVE ENCOUNTER EFFECT
+    // ========================================================================
+    // Loop through all effects on the player and remove our tagged effect
+    // This stops the encounter cycle and cleans up the player
+    // ========================================================================
+    
+    // Get the first effect on the player
+    effect eEffect = GetFirstEffect(oPC);
+    
+    // Loop through all effects until we run out
+    while (GetIsEffectValid(eEffect))
+    {
+        // Check if this effect has our specific tag
+        if (GetEffectTag(eEffect) == ENCOUNTER_EFFECT_TAG)
+        {
+            // This is our encounter effect, remove it
+            RemoveEffect(oPC, eEffect);
+        }
+        
+        // Move to the next effect on the player
+        eEffect = GetNextEffect(oPC);
+    }
+    
+    // ========================================================================
+    // CLEAN UP ENCOUNTER STATUS
+    // ========================================================================
+    // Clear the variable that tracks if the player has active spawns
+    // This ensures they start fresh if they re-enter the area
+    // ========================================================================
+    SetEncounterActive(oPC, FALSE);
+}

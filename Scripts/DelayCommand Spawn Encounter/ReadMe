@@ -1,5 +1,18 @@
 Readme
 
+This is the complete, professional-grade Dynamic Spawn Engine (DSE). It is designed specifically for a 
+Persistent World (PW) environment—balancing ultra-low CPU usage with "Self-Healing" stability.
+
+How to Install
+
+1. dse_inc: Create this first (it’s the "Brain's Dictionary").
+2. The Rest: Create the other 6 scripts and hit Save & Compile.
+3. The Hooks: Assign the scripts to your Area and Monster blueprints as noted in the headers.
+
+
+
+
+
 Installation Instructions:
 
 Create these scripts in your module

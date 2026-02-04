@@ -58,66 +58,6 @@ All major changes are made in one place: the dse_inc script.
     3. Area Settings: Ensure your Area is set to "Active" or has players in it, otherwise the loop will safely shut itself down.
 
 
-Efficiency
-
-This report compares our "Brain Loop" (DSE) against the three most common ways builders handle encounters in Neverwinter Nights. Each has a specific "cost" to the server's CPU and your time as a developer.
-📊 Efficiency Comparison Report
-
-1. DSE (The Brain Loop)
-The "Smart Manager" approach.
-
-    Pros: *
-        - Low CPU Idle: If no one is in the room, the script stops completely.
-        - Bulk Processing: One script cleans up 100 bodies just as easily as 1.
-        - Fail-Safe: Since it scans the area rather than waiting for "reports," it can't get stuck if a monster glitches.
-
-    Cons: * 
-        - The Lull: Players might have to wait for the next "tick" (e.g., 2 minutes) for a new spawn after a fight ends.
-        
-
-2. Encounter Triggers
-The "Invisible Tripwire" approach.
-
-    Pros: * 
-        - Zero CPU Usage (Idle): They do literally nothing until someone steps on them.
-        - Precision: You know exactly where the monsters will appear.
-
-    Cons: * 
-        - One-Shot Wonder: Usually, once a trigger fires, it’s done. Making them "reset" requires complex scripting.
-        - Predictability: Players learn exactly where the "spawn spot" is.
-        - "The Wall Problem": If a player stands on the edge of a trigger, they can "flicker" it, causing 50 mobs to spawn at once and crash the server.
-
-3. Waypoints (The "Patrol" System)
-The "Pre-Placed" approach.
-
-    Pros: * 
-        - Visual Design: You can see exactly where Bob and Bill will encounter enemies in the Toolset.
-        - No Scripting: Great for static encounters (monsters just standing there).
-
-    Cons: * 
-        - Memory Heavy: Every waypoint is an object the server has to remember. 500 waypoints = 500 "brain cells" used.
-        - Static: Once the monsters are dead, they don't come back unless you add a separate respawn script.
-
-4. OnHeartbeat (The "Old Way")
-The "Every 6 Seconds" approach.
-
-    Pros: * 
-        - Native Support: Built into every object by default.
-
-    Cons: * 
-        - The Server Killer: This is the least efficient method. If you have 100 monsters and 10 players all running an OnHeartbeat script every 6 seconds, the server will lag into oblivion.
-        - Unnecessary Work: It runs even if nothing is happening, like a car idling in the garage all night.
-
-🏆 The Efficiency Winner: The Brain Loop (DSE)
-Method	              Idle Load        	Action Load	           Reliability	         Best For...
-DSE Loop	              None	           Low/Steady	            Excellent	          Persistent Worlds / Long Play
-Triggers	              None	              Low                	Medium	            One-time Story Quests
-Waypoints	             Medium	              Low                	High	              Static Guards / Bosses
-OnHeartbeat	           Extreme             	High	              Low	                Don't use this for spawns!
-
-Why DSE wins for your project:
-    - Because you need a system that adapts to how many people are in the room. Triggers are too "stiff"—they don't care if there are 1 or 10 players. Our Brain Loop scales perfectly; it looks at the VIP list, sees three names, and adjusts the math automatically.
-  
 
 Instalation
 

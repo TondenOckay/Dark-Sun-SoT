@@ -9,7 +9,30 @@ How to Install
 2. The Rest: Create the other 6 scripts and hit Save & Compile.
 3. The Hooks: Assign the scripts to your Area and Monster blueprints as noted in the headers.
 
+1. The Dictionary (dse_inc.nss)
+This file contains your settings. You don't "run" this script; the others just read it.
 
+2. The Brain (dse_area_loop.nss)
+The master timer. It manages the whole area once every 2 minutes.
+
+3. The Muscle (dse_spawn_action.nss)
+This creates the actual monsters.
+
+4. The Janitor (dse_despawn.nss)
+Cleans up monsters if the player leaves or logs out.
+
+5. The Light Switch (dse_onenter.nss)
+Place in Area Properties -> OnEnter.
+
+6. The Sign-Out (dse_onexit.nss)
+Place in Area Properties -> OnExit.
+
+7. The Reset (dse_mob_death.nss)
+Place in Creature Blueprint -> OnDeath.
+
+Final Pro-Tip for PW Performance
+By using ExecuteScript, each part of the process gets its own "instruction limit," meaning even if your server has 100 people
+and a massive fight breaks out, the scripts won't "pop a fuse" and stop working.
 
 
 

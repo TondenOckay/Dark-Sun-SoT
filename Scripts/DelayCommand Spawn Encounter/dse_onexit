@@ -1,58 +1,59 @@
 // ============================================================================
-// dse_onexit
+// THE STOPPER (dse_onexit)
 // ============================================================================
-// AREA EVENT: OnExit
-// This script fires when any object exits the area
-// 
-// Purpose:
-// - Removes the invisible encounter effect when players leave
-// - Clears any active encounter status
-// - Stops the encounter check cycle (by removing the effect that triggers it)
-// 
-// How to use:
-// Place this script in the OnExit event of any area where you have
-// the encounter_onenter script
+// This script belongs in: Area Properties -> Events -> OnExit
 // ============================================================================
 
 #include "dse_inc"
 
-void main()
-{
-    // Get the object that is leaving the area
-    object oPC = GetExitingObject();
-    
-    // Safety check: Only process player characters
-    if (!GetIsPC(oPC)) return;
-    
-    // ========================================================================
-    // REMOVE ENCOUNTER EFFECT
-    // ========================================================================
-    // Loop through all effects on the player and remove our tagged effect
-    // This stops the encounter cycle and cleans up the player
-    // ========================================================================
-    
-    // Get the first effect on the player
-    effect eEffect = GetFirstEffect(oPC);
-    
-    // Loop through all effects until we run out
-    while (GetIsEffectValid(eEffect))
-    {
-        // Check if this effect has our specific tag
-        if (GetEffectTag(eEffect) == ENCOUNTER_EFFECT_TAG)
-        {
-            // This is our encounter effect, remove it
-            RemoveEffect(oPC, eEffect);
+void main() {
+    // 1. Identify who is leaving the area.
+    object oExiting = GetExitingObject();
+    object oArea = OBJECT_SELF;
+    string sExitingName = GetName(oExiting);
+
+    // 2. We only care if the object leaving is a Player or our test NPCs (Bob/Bill).
+    if (GetIsPC(oExiting) || sExitingName == "Bob" || sExitingName == "Bill") {
+
+        // 3. Find out how many people the Area thinks are inside right now.
+        int nCount = GetLocalInt(oArea, "AREA_PC_COUNT");
+        int i;
+        int bFound = FALSE;
+
+        // 4. Look through every "Parking Space" (Slot) in the VIP List.
+        for (i = 1; i <= nCount; i++) {
+            string sVar = "PLAYER_SLOT_" + IntToString(i);
+            object oOccupant = GetLocalObject(oArea, sVar);
+
+            // 5. If we find the person who is leaving in this slot...
+            if (oOccupant == oExiting) {
+
+                // 6. VOID FIX / STITCHING LOGIC:
+                // We can't just leave an empty hole in the list, or the loop will break.
+                // We take the person in the VERY LAST slot and move them into this spot.
+                object oLastPerson = GetLocalObject(oArea, "PLAYER_SLOT_" + IntToString(nCount));
+
+                SetLocalObject(oArea, sVar, oLastPerson);
+
+                // 7. Erase the now-duplicate last slot and shrink the total count by 1.
+                DeleteLocalObject(oArea, "PLAYER_SLOT_" + IntToString(nCount));
+                nCount--;
+
+                SetLocalInt(oArea, "AREA_PC_COUNT", nCount);
+                bFound = TRUE;
+
+                // 8. Log the departure so you can see it working during your test.
+                DSE_Debug(oExiting, sExitingName + " left the area. VIP List updated.");
+
+                // Stop searching the loop since we found our target.
+                break;
+            }
         }
-        
-        // Move to the next effect on the player
-        eEffect = GetNextEffect(oPC);
+
+        // 9. CLEANUP: Turn off the system for this specific player so they don't
+        // carry "spawn variables" into other parts of your world.
+        DeleteLocalInt(oExiting, VAR_SYSTEM_RUNNING);
+        DeleteLocalInt(oExiting, VAR_IN_COMBAT);
+        DeleteLocalInt(oExiting, "DSE_MOBS_LEFT");
     }
-    
-    // ========================================================================
-    // CLEAN UP ENCOUNTER STATUS
-    // ========================================================================
-    // Clear the variable that tracks if the player has active spawns
-    // This ensures they start fresh if they re-enter the area
-    // ========================================================================
-    SetEncounterActive(oPC, FALSE);
 }

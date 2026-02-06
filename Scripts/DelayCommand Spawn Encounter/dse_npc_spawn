@@ -1,0 +1,18 @@
+// =============================================================================
+// DSE NPC REGISTRATION (dse_npc_spawn)
+// PURPOSE: ADDS BILL OR BOB TO THE SYSTEM'S LIST OF OWNERS.
+// =============================================================================
+
+void main()
+{
+    object oNPC = OBJECT_SELF; // The NPC (Bill or Bob).
+    object oArea = GetArea(oNPC); // The map they are standing in.
+
+    // Register them into the Area's VIP list.
+    int nCount = GetLocalInt(oArea, "DSE_VIP_COUNT") + 1;
+    SetLocalInt(oArea, "DSE_VIP_COUNT", nCount);
+    SetLocalObject(oArea, "DSE_VIP_" + IntToString(nCount), oNPC);
+    
+    // Log it to the server console.
+    PrintString("DSE: Registered NPC [" + GetTag(oNPC) + "] into VIP slot " + IntToString(nCount));
+}

@@ -65,36 +65,70 @@ This manual is now the definitive guide for your Engine. Would you like me to ge
 
 Instalation
 
-This document serves as the "Wiring Diagram" for the Dynamic Spawn Engine (DSE). It identifies exactly where each script file connects to the Neverwinter Nights Toolset.
-📂 DSE System: Script Placement Guide
-Script Name	            Toolset Location	            Event Slot	            Description
-dse_inc	                 Script Editor	           N/A (Include)	        The "Settings" file. It is not placed in a slot; other scripts "pull" settings from it.
-dse_area_enter	          Area Properties              OnAreaEnter	           The "Doorman." It registers Bob and Bill and starts the Brain Loop.
-dse_area_exit	          Area Properties	             OnAreaExit	           The "Checkout." It notifies the system when a player leaves the map.
-dse_area_loop	           Script Editor	           N/A (Virtual)	        The "Brain." It is called by the Enter script and then runs itself on a timer.
-dse_spawn_action	        Script Editor              N/A (Virtual)	        The "Muscle." It is called by the Brain to create and "Brand" monsters.
+This guide focuses on the environmental setup within the NWN Toolset. Since the code is already written, the system relies on specific "Hooks" and "Tags" to function correctly.
 
-🕹️ Non-Script Setup (Required)
+Follow these steps to integrate the DSE Engine v6.0 into your module.
 
-To ensure the scripts can "see" the players and monsters correctly, you must set these specific fields in the Toolset:
+1. The Area "Brain" Setup
 
-1. The Monster (Creature Blueprint)
-    - Tag: Must be exactly DSE_SPAWN (or whatever you set in dse_inc).
-    - ResRef: Must match the name used in the CreateObject line within dse_spawn_action (e.g., nw_skeleton).
-    - Scripts: It is recommended to clear the OnDeath and OnHeartbeat slots to maximize server performance.
+The engine lives inside the Area itself. You must tell the Area to start the "Pulse."
 
-2. The Area (Area Properties)
-    - Events Tab: Ensure dse_area_enter is selected in the OnAreaEnter dropdown.
-    - Variables: No variables need to be set manually; the Brain script will create the "VIP List" automatically when Bob or Bill walks in.
+    - Open your Area properties.
+    - Go to the Events tab.
+    - Look for the OnEnter slot.
+    - If you have an existing script there, add this line to it. If not, create a simple script containing:
+    
 
-🔍 Installation Checklist
-    [ ] dse_inc is saved and compiled.
-    [ ] dse_spawn_action is saved and compiled.
-    [ ] dse_area_loop is saved and compiled.
-    [ ] dse_area_enter is plugged into the Area's OnAreaEnter slot.
-    [ ] dse_area_exit is plugged into the Area's OnAreaExit slot.
-    [ ] Creature Tag is set to DSE_SPAWN.
-
-Testing Tip: If you have Debug Mode turned on in dse_inc, your first test should be walking into the area. If the "Wiring" is correct, you will immediately receive a yellow message in your chat log saying "BRAIN: Starting loop..."
+    void main() {
+        ExecuteScript("dse_engine", OBJECT_SELF);
+    }
 
 
+    Note: This "kicks" the engine into gear the moment the first player arrives.
+
+2. Creating your "VIPs" (Bill & Bob)
+
+The engine is programmed to look for specific tags to define who "owns" an encounter.
+
+    - Create or find the NPC creatures you want to use as VIPs.
+    - In the General tab of the Creature Properties, set the Tag exactly to: Bill or Bob.
+    - Registration: For the engine to track them, they must be added to the Area's VIP list. You can do this by placing a script in the NPC's OnSpawn event:
+    
+
+    void main() {
+        object oArea = GetArea(OBJECT_SELF);
+        int nCount = GetLocalInt(oArea, "DSE_VIP_COUNT") + 1;
+        SetLocalInt(oArea, "DSE_VIP_COUNT", nCount);
+        SetLocalObject(oArea, "DSE_VIP_" + IntToString(nCount), OBJECT_SELF);
+    }
+
+
+3. Monster Blueprint Preparation
+
+The engine spawns creatures using ResRefs. For the cleanup and transfer to work, the blueprints in your palette must be compatible.
+    - Find the creatures listed in your SpawnEncounter function (e.g., nw_skeleton, nw_mummy).
+    - Ensure these creatures are not marked as "Plot" or "Immortal" by default in the blueprint.
+    - Important: You do not need to put any special variables on the blueprints themselves; the script injects DSE_IS_MOB and DSE_OWNER automatically at the moment of birth.
+
+4. Setting the Boundaries (Waypoints)
+
+While the engine calculates distance mathematically, it helps to ensure your Area is navigable.
+
+    The 60m Rule: Ensure your Area is large enough to allow a player to actually get 60 meters away from a mob.
+        - A standard NWN "Tile" is 10x10 meters.
+        - To outrun a mob, a player needs to move roughly 6 full tiles away from the creature's last position.
+
+5. Summary of System Variables
+
+If you need to check if the system is running during a live game using "Debug Mode," these are the variables stored on the Area Object:
+Variable Name	    Type	    Value
+DSE_ACTIVE	        Integer	    1 (System is pulsing)
+DSE_VIP_COUNT	    Integer	    Total number of Players + Bill + Bob
+DSE_VIP_1	        Object	    The first tracked person (usually the first player)
+
+6. Troubleshooting the Toolset Setup
+
+    - Monsters aren't despawning: Check if the Area script is actually firing. If you enter the area and don't see the "--- Pulse Start ---" message, the OnEnter script is missing.
+    - Bill/Bob aren't getting mobs: Ensure their Tag matches exactly (case-sensitive). If the tag is bill (lowercase), the engine won't recognize them as an "Heir."
+
+Would you like me to create a "Debug Item" script for you? I can write a short script for a "wand" that you can use in-game to see exactly which VIPs the engine is currently tracking.

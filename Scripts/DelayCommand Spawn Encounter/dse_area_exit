@@ -1,0 +1,90 @@
+// =============================================================================
+// DSE AREA EXIT (SAFETY NET)   (dse_area_exit)
+// Purpose: Instant cleanup/transfer when a player leaves the map.
+// =============================================================================
+
+// We include a simplified version of the Heir logic for the exit pulse.
+object GetExitHeir(object oPC, object oArea)
+{
+    int nNth = 1; 
+    object oTarget = GetNearestCreature(CREATURE_TYPE_IS_ALIVE, TRUE, oPC, nNth);
+    while (GetIsObjectValid(oTarget))
+    {
+        string sTag = GetTag(oTarget);
+        if ((GetIsPC(oTarget) || sTag == "Bill" || sTag == "Bob") && 
+            GetArea(oTarget) == oArea && !GetIsDead(oTarget))
+        {
+            return oTarget;
+        }
+        nNth++;
+        oTarget = GetNearestCreature(CREATURE_TYPE_IS_ALIVE, TRUE, oPC, nNth);
+    }
+    return OBJECT_INVALID;
+}
+
+void main()
+{
+    object oExiter = GetExitingObject(); // Who just left?
+    object oArea = OBJECT_SELF;
+
+    // Only run this logic if it was a Player (PC) who left.
+    if (!GetIsPC(oExiter)) return;
+
+    // --- STEP 1: Identify "Orphaned" Mobs ---
+    // We look through the slots of the person who just left.
+    int i, nSlot;
+    for (i = 1; i <= 6; i++)
+    {
+        object oMob = GetLocalObject(oExiter, "DSE_MOB_" + IntToString(i));
+        
+        if (GetIsObjectValid(oMob) && !GetIsDead(oMob))
+        {
+            // The owner is gone. Can we find a new one immediately?
+            object oHeir = GetExitHeir(oMob, oArea);
+            
+            if (GetIsObjectValid(oHeir))
+            {
+                // TRANSFER LOGIC (Instant Hand-off)
+                SetLocalObject(oMob, "DSE_OWNER", oHeir);
+                
+                // Find a slot on the new owner.
+                for (nSlot = 1; nSlot <= 6; nSlot++)
+                {
+                    object oCheck = GetLocalObject(oHeir, "DSE_MOB_" + IntToString(nSlot));
+                    if (!GetIsObjectValid(oCheck) || GetIsDead(oCheck))
+                    {
+                        SetLocalObject(oHeir, "DSE_MOB_" + IntToString(nSlot), oMob);
+                        nSlot = 10; // Found a slot, break inner loop.
+                    }
+                }
+                
+                // Redirect the monster to the new target.
+                AssignCommand(oMob, ClearAllActions());
+                AssignCommand(oMob, ActionAttack(oHeir));
+            }
+            else
+            {
+                // CLEANUP LOGIC (No one left to fight)
+                SetPlotFlag(oMob, FALSE);
+                AssignCommand(oMob, ClearAllActions(TRUE));
+                DestroyObject(oMob, 0.1); // Erase from existence.
+            }
+        }
+        
+        // Clear the slot on the player who left so they arrive clean in the next area.
+        DeleteLocalObject(oExiter, "DSE_MOB_" + IntToString(i));
+    }
+
+    // --- STEP 2: VIP List Maintenance ---
+    // We need to remove the exiter from the Area's VIP list.
+    int nVIPCount = GetLocalInt(oArea, "DSE_VIP_COUNT");
+    for (i = 1; i <= nVIPCount; i++)
+    {
+        object oCheckPC = GetLocalObject(oArea, "DSE_VIP_" + IntToString(i));
+        if (oCheckPC == oExiter)
+        {
+            // Clear their entry in the VIP array.
+            DeleteLocalObject(oArea, "DSE_VIP_" + IntToString(i));
+        }
+    }
+}

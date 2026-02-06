@@ -1,0 +1,324 @@
+// =============================================================================
+// DSE ENGINE VERSION 6.0 - THE MASTER CONTROLLER (dse_engine)
+// Purpose: Automates encounter spawning, transferring, and mass-cleanup.
+// =============================================================================
+
+// --- HELPER FUNCTIONS ---
+
+// Checks if a Player/NPC currently has an active monster assigned to them.
+int GetHasActiveEncounter(object oPC)
+{
+    int i;
+    // Loop through the 6 possible slots assigned to this character.
+    for (i = 1; i <= 6; i++)
+    {
+        // Check for the specific object stored in this slot (1-6).
+        object oMob = GetLocalObject(oPC, "DSE_MOB_" + IntToString(i));
+        
+        // If the object exists and is not dead, the player is "busy."
+        if (GetIsObjectValid(oMob) && !GetIsDead(oMob))
+        {
+            return TRUE; // Found an active mob, stop searching and return True.
+        }
+    }
+    return FALSE; // No active mobs found in any slot.
+}
+
+// Checks if there are any enemies (non-DSE) within 40 meters.
+int GetIsNearbyHostile(object oPC)
+{
+    // Find the closest creature that naturally hates the player.
+    object oTarget = GetNearestCreature(CREATURE_TYPE_REPUTATION, REPUTATION_TYPE_ENEMY, oPC);
+    
+    // If they exist and are closer than 40m, we shouldn't spawn new mobs.
+    if (GetIsObjectValid(oTarget) && GetDistanceBetween(oPC, oTarget) <= 40.0)
+    {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+// Sends a message to every Player currently inside this specific Area.
+void AreaMsg(object oArea, string sMsg)
+{
+    object oPC = GetFirstObjectInArea(oArea);
+    
+    while (GetIsObjectValid(oPC))
+    {
+        // Only send the message if the object is an actual Player.
+        if (GetIsPC(oPC))
+        {
+            SendMessageToPC(oPC, "DSE: " + sMsg);
+        }
+        // Move to the next person in the area list.
+        oPC = GetNextObjectInArea(oArea);
+    }
+}
+
+// Finds the nearest living valid target (PC, Bill, or Bob) to take over a mob.
+object GetValidHeir(object oPC, object oArea)
+{
+    int nNth = 1; 
+    // Start looking for the nearest living creature.
+    object oTarget = GetNearestCreature(CREATURE_TYPE_IS_ALIVE, TRUE, oPC, nNth);
+    
+    while (GetIsObjectValid(oTarget))
+    {
+        string sTag = GetTag(oTarget);
+        
+        // Is this person a PC, or is their tag "Bill" or "Bob"?
+        if ((GetIsPC(oTarget) || sTag == "Bill" || sTag == "Bob") && 
+            GetArea(oTarget) == oArea && !GetIsDead(oTarget))
+        {
+            return oTarget; // Found a valid heir!
+        }
+        
+        nNth++; // If not, look for the next closest person.
+        oTarget = GetNearestCreature(CREATURE_TYPE_IS_ALIVE, TRUE, oPC, nNth);
+    }
+    
+    return OBJECT_INVALID; // No one is around to take the mob.
+}
+
+// The actual command that places the monster into the world.
+void ActionDoSpawn(object oPC, object oArea, string sResRef, int nSlot)
+{
+    // Safety check: Don't spawn if the player left or died during the delay.
+    if (!GetIsObjectValid(oPC) || GetIsDead(oPC) || GetArea(oPC) != oArea)
+    {
+        return;
+    }
+    
+    // Calculate a random position within 5 meters of the player.
+    vector vPos = GetPosition(oPC);
+    vPos.x += (Random(11) - 5.0); 
+    vPos.y += (Random(11) - 5.0);
+    
+    location lLoc = Location(oArea, vPos, 0.0);
+    
+    // Create the creature and save it to a variable 'oMob'.
+    object oMob = CreateObject(OBJECT_TYPE_CREATURE, sResRef, lLoc);
+    
+    // Mark the mob so the engine recognizes it later.
+    SetLocalInt(oMob, "DSE_IS_MOB", TRUE);
+    // Tell the mob who its "Daddy" is.
+    SetLocalObject(oMob, "DSE_OWNER", oPC);
+    
+    // Save the mob into the specific slot on the player.
+    SetLocalObject(oPC, "DSE_MOB_" + IntToString(nSlot), oMob);
+    
+    // Visual effect: Blue puff of smoke at the spawn location.
+    ApplyEffectAtLocation(DURATION_TYPE_INSTANT, EffectVisualEffect(VFX_IMP_UNSUMMON), lLoc);
+}
+
+// Logic to decide WHAT to spawn based on a 1-100 roll.
+void SpawnEncounter(object oPC, object oArea)
+{
+    // Safety check: Ensure the player is still eligible for a spawn.
+    if (!GetIsObjectValid(oPC) || GetIsDead(oPC) || GetArea(oPC) != oArea || GetHasActiveEncounter(oPC))
+    {
+        return;
+    }
+
+    int nRoll = d100(); // Roll the dice.
+    string sResRef; 
+    int nPick = Random(4) + 1; // Pick 1 of 4 variations in each tier.
+
+    if (nRoll <= 70) // 70% Chance for Common mobs.
+    { 
+        if (nPick == 1)      { sResRef = "nw_skeleton"; }
+        else if (nPick == 2) { sResRef = "nw_zombie01"; }
+        else if (nPick == 3) { sResRef = "nw_badger"; }
+        else                 { sResRef = "nw_rat001"; }
+    } 
+    else if (nRoll <= 90) // 20% Chance for Rare mobs.
+    { 
+        if (nPick == 1)      { sResRef = "nw_ghoul"; }
+        else if (nPick == 2) { sResRef = "nw_wolf"; }
+        else if (nPick == 3) { sResRef = "nw_direrat"; }
+        else                 { sResRef = "nw_orc001"; }
+    } 
+    else // 10% Chance for Elite mobs.
+    { 
+        if (nPick == 1)      { sResRef = "nw_shadow"; }
+        else if (nPick == 2) { sResRef = "nw_ogre"; }
+        else if (nPick == 3) { sResRef = "nw_mummy"; }
+        else                 { sResRef = "nw_drggrn001"; }
+    }
+
+    // Determine how many to spawn (1 to 6).
+    int nNum = Random(6) + 1;
+    
+    AreaMsg(oArea, ">>> SPAWNING " + IntToString(nNum) + " [" + sResRef + "] for " + GetName(oPC));
+    
+    int i;
+    for (i = 1; i <= nNum; i++) 
+    { 
+        // Stagger the spawns by 0.4 seconds each to prevent lag spikes.
+        DelayCommand(IntToFloat(i) * 0.4, ActionDoSpawn(oPC, oArea, sResRef, i)); 
+    }
+}
+
+// --- MAIN ENGINE START ---
+
+void main()
+{
+    object oArea = OBJECT_SELF;
+    int nVIPCount = GetLocalInt(oArea, "DSE_VIP_COUNT");
+    int i, nSlot;
+    int bAnyoneStillHere = FALSE;
+
+    AreaMsg(oArea, "--- Pulse Start ---");
+
+    // PHASE 0: Check if the area is empty.
+    for (i = 1; i <= nVIPCount; i++)
+    {
+        object oPC = GetLocalObject(oArea, "DSE_VIP_" + IntToString(i));
+        if (GetIsObjectValid(oPC) && !GetIsDead(oPC))
+        {
+            bAnyoneStillHere = TRUE;
+        }
+    }
+
+    // PHASE 1: VIRTUAL ARRAY SCANNING (The "Eye in the Sky")
+    int nKillCount = 0;
+    int nTransferCount = 0;
+    object oSearch = GetFirstObjectInArea(oArea);
+    
+    while (GetIsObjectValid(oSearch))
+    {
+        // Only look at creatures spawned by this engine.
+        if (GetLocalInt(oSearch, "DSE_IS_MOB") == TRUE)
+        {
+            object oOwner = GetLocalObject(oSearch, "DSE_OWNER");
+            
+            // If the area is empty, kill the mob.
+            if (bAnyoneStillHere == FALSE)
+            {
+                nKillCount++;
+                SetLocalObject(oArea, "T_K_" + IntToString(nKillCount), oSearch);
+            }
+            // If the owner is gone/dead, try to find a new owner.
+            else if (!GetIsObjectValid(oOwner) || GetIsDead(oOwner) || GetArea(oOwner) != oArea)
+            {
+                object oHeir = GetValidHeir(oSearch, oArea);
+                
+                // If an heir is found within 60m, add to Transfer list.
+                if (GetIsObjectValid(oHeir) && GetDistanceBetween(oSearch, oHeir) <= 60.0)
+                {
+                    nTransferCount++;
+                    SetLocalObject(oArea, "T_T_M_" + IntToString(nTransferCount), oSearch);
+                    SetLocalObject(oArea, "T_T_H_" + IntToString(nTransferCount), oHeir);
+                }
+                else // No heir nearby? Add to Kill list.
+                {
+                    nKillCount++;
+                    SetLocalObject(oArea, "T_K_" + IntToString(nKillCount), oSearch);
+                }
+            }
+            // If the owner is too far away (>60m), kill the mob.
+            else if (GetDistanceBetween(oSearch, oOwner) > 60.0)
+            {
+                nKillCount++;
+                SetLocalObject(oArea, "T_K_" + IntToString(nKillCount), oSearch);
+            }
+        }
+        oSearch = GetNextObjectInArea(oArea);
+    }
+
+    // PHASE 2: MASS TRANSFER EXECUTION
+    for (i = 1; i <= nTransferCount; i++)
+    {
+        object oMob = GetLocalObject(oArea, "T_T_M_" + IntToString(i));
+        object oHeir = GetLocalObject(oArea, "T_T_H_" + IntToString(i));
+        
+        AreaMsg(oArea, "ORPHAN: Transferring " + GetName(oMob) + " to " + GetName(oHeir));
+        
+        // Formally bond the mob to the new owner.
+        SetLocalObject(oMob, "DSE_OWNER", oHeir);
+        
+        // Find an empty slot (1-6) on the Heir and put the mob in it.
+        for (nSlot = 1; nSlot <= 6; nSlot++)
+        {
+            object oCheck = GetLocalObject(oHeir, "DSE_MOB_" + IntToString(nSlot));
+            if (!GetIsObjectValid(oCheck) || GetIsDead(oCheck))
+            {
+                SetLocalObject(oHeir, "DSE_MOB_" + IntToString(nSlot), oMob);
+                nSlot = 10; // Break out of the slot search.
+            }
+        }
+        
+        AssignCommand(oMob, ClearAllActions());
+        AssignCommand(oMob, ActionAttack(oHeir)); // Force the mob to attack the heir.
+        
+        // Clean up temporary variables.
+        DeleteLocalObject(oArea, "T_T_M_" + IntToString(i));
+        DeleteLocalObject(oArea, "T_T_H_" + IntToString(i));
+    }
+
+    // PHASE 3: MASS CLEANUP EXECUTION
+    for (i = 1; i <= nKillCount; i++)
+    {
+        object oKill = GetLocalObject(oArea, "T_K_" + IntToString(i));
+        AreaMsg(oArea, "CLEANUP: Erasing " + GetName(oKill));
+        
+        SetPlotFlag(oKill, FALSE); // Ensure it can be killed.
+        AssignCommand(oKill, ClearAllActions(TRUE)); // Stop its brain.
+        DestroyObject(oKill, 0.0); // Remove from the world.
+        
+        DeleteLocalObject(oArea, "T_K_" + IntToString(i)); // Clean up temp variables.
+    }
+
+    // PHASE 4: PLAYER FLOW CONTROL (Spawning new encounters)
+    if (bAnyoneStillHere == TRUE)
+    {
+        for (i = 1; i <= nVIPCount; i++)
+        {
+            object oPC = GetLocalObject(oArea, "DSE_VIP_" + IntToString(i));
+            if (!GetIsObjectValid(oPC) || GetIsDead(oPC))
+            {
+                DeleteLocalObject(oArea, "DSE_VIP_" + IntToString(i));
+                continue;
+            }
+
+            // If the player is already busy fighting, skip them.
+            if (GetHasActiveEncounter(oPC) || GetIsNearbyHostile(oPC))
+            {
+                AreaMsg(oArea, GetName(oPC) + ": PAUSED (Active Encounter).");
+                continue;
+            }
+
+            // Logic to prevent "Stacking" if players are grouped within 30m.
+            int bNearHigherVIP = FALSE;
+            for (nSlot = 1; nSlot < i; nSlot++)
+            {
+                object oOther = GetLocalObject(oArea, "DSE_VIP_" + IntToString(nSlot));
+                if (GetIsObjectValid(oOther) && GetDistanceBetween(oPC, oOther) <= 30.0)
+                {
+                    bNearHigherVIP = TRUE;
+                    break;
+                }
+            }
+
+            // If solitary or the group leader, roll for a 40% spawn chance.
+            if (bNearHigherVIP == FALSE)
+            {
+                int nD100 = d100();
+                AreaMsg(oArea, GetName(oPC) + ": Rolling " + IntToString(nD100) + "/40");
+                if (nD100 <= 40)
+                {
+                    DelayCommand(2.0, SpawnEncounter(oPC, oArea));
+                }
+            }
+        }
+        
+        // Loop the entire script again in 120 seconds.
+        DelayCommand(120.0, ExecuteScript("dse_engine", oArea));
+    }
+    else // If the area is totally empty, shut down the pulse.
+    {
+        AreaMsg(oArea, "SHUTDOWN: No survivors left.");
+        SetLocalInt(oArea, "DSE_ACTIVE", FALSE);
+        SetLocalInt(oArea, "DSE_VIP_COUNT", 0);
+    }
+}

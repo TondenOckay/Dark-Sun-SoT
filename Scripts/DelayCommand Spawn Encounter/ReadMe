@@ -1,61 +1,65 @@
 Readme
 
-This is the complete, professional-grade Dynamic Spawn Engine (DSE). It is designed specifically for a 
-Persistent World (PW) environment—balancing ultra-low CPU usage with "Self-Healing" stability.
+DSE Engine Version 6.0: Technical Manual
 
+Core Philosophy: The Master Controller (Area-Side)
 
-📜 The "DSE" Encounter System (v1.0)
+The DSE Engine (Dynamic Spawn Engine) is designed for high-performance, low-lag encounter management in 
+Neverwinter Nights: Enhanced Edition. Unlike traditional spawners that rely on creature heartbeats, this 
+engine utilizes a centralized "Pulse" logic that scans, validates, and cleans the environment every 120 seconds.
 
-Dynamic Spawn Engine for NWN:EE
+1. The Architecture: "The Virtual Array"
 
-📝 Overview
+Version 6.0 solves the "Aurora Loop Reset" bug by decoupling detection from action. 
+The script operates in four distinct, non-overlapping phases.
+Phase 1: The Scan (Data Collection)
 
-This system is a low-impact, high-reliability monster spawning engine. It is designed to handle multiple players (like "Bob" and "Bill") in the same room without lagging the server or breaking if a monster gets stuck.
+The engine performs a GetFirstObjectInArea loop. It touches nothing. It simply categorizes every DSE-tagged
+creature into one of two "Virtual Arrays" stored as temporary local objects on the Area:
+    - Transfer List (T_T_): Creatures whose owners have died or left, but who are within 60m of a valid "Heir" (another player or VIP).
+    - Kill List (T_K_): Creatures that have been outrun (>60m), have no possible heirs, or exist in an area where no players remain.
 
-Instead of monsters "reporting" their deaths, a single Brain Script (The Manager) scans the area every 2 minutes to decide what needs to happen.
-🛠️ How it Works (The 4 Phases)
-1. The Janitor (Cleanup)
+Phase 2: Mass Transfer (The Hand-off)
 
-Every time the script runs, it looks for dead bodies with the DSE_SPAWN tag. If it finds any, it vaporizes them. This keeps your floor clean and prevents "Corpse Lag."
-2. The VIP Registry (The List)
+The engine processes the Transfer List.
+    - It updates the creature's DSE_OWNER variable to the new Heir.
+    - It registers the creature in one of the Heir's 6 available Encounter Slots.
+    - It issues a ClearAllActions and ActionAttack to ensure the creature immediately engages the new target.
 
-The system keeps a list of every player in the area.
-   - If a player leaves, it removes them.
-   - If a player enters, it adds them.
-   - It automatically "heals" the list if there are gaps (the Void Fix).
+Phase 3: Mass Cleanup (The Purge)
 
-3. The Live Scan (The Radar)
+The engine processes the Kill List.
+    - It strips the Plot flag to ensure the object is destructible.
+    - It clears actions to prevent "ghosting" (zombies moving while being destroyed).
+    - It executes DestroyObject, effectively reclaiming server memory.
 
-The script acts like a radar for every player:
-   - It checks for living monsters within 40 meters of each player.
-   - If monsters are found: It assumes the player is still "Busy" and waits.
-   - If no monsters are found: It proceeds to the next phase.
+Phase 4: Flow Control (The Re-Roll)
 
-4. The Dice Roll (The Action)
+Only after the area is clean does the engine check the players. If a player has no active encounter slots filled 
+and is not in combat with "wild" hostiles, the engine rolls a d100 for a new encounter.
 
-If a player is "Free," the system rolls a 100-sided die.
-   - If the roll is equal to or lower than your Spawn Chance (default 20%), it spawns a new squad of monsters at a random point nearby.
+2. Logic Constraints & Constants
+Feature	         Value	         Technical Purpose
+Pulse             Rate	         120.0s	Balanced to prevent script-lag while ensuring map cleanliness.
+Max Slots	        6	         Prevents "Mob Bloat" and protects server CPU.
+Outrun Range	   60.0m	         Allows players to tactically retreat and "despawn" pursuit.
+Spawn Stagger	   0.4s	         Staggers CreateObject calls to prevent FPS hitches on spawn.
+Combat Check	   40.0m	         Prevents new spawns if a player is already fighting non-DSE mobs.
 
-📂 File Directory
-File Name	                                       Purpose	                                                            Where to Put It
-- dse_inc	                The Settings. Change spawn rates, tags, and debug mode                                here.	N/A (Included in scripts)
-- dse_area_enter            The Doorman. Registers players when they walk in.                                   	Area Events -> OnAreaEnter
-- dse_area_exit	              The Checkout. Removes players when they leave.                                    	Area Events -> OnAreaExit
-- dse_area_loop	             The Brain. Manages the scans, cleanup, and logic.	                                    Called by Entry/Loop
-- dse_spawn_act             The Muscle. Actually puts the monsters in the world.	                                N/A (Called by Brain)
+3. Variable Reference Table
 
-⚙️ How to Customize (For Beginners)
+These variables are used to track the "state" of the world.
+    - DSE_IS_MOB (Int): Placed on all spawned creatures. Tells the engine "I am part of this system."
+    - DSE_OWNER (Object): Placed on the creature. Points to the VIP it is currently hunting.
+    - DSE_MOB_1 through DSE_MOB_6 (Object): Placed on the Player. Tracks which creatures are currently occupying their encounter slots.
+    - DSE_VIP_X (Object): Placed on the Area. Tracks who is currently eligible for spawns (Players, Bill, Bob).
 
-All major changes are made in one place: the dse_inc script.
-   - To change the Difficulty: Adjust DSE_MIN_MOBS and DSE_MAX_MOBS.
-   - To change the Frequency: Change the fWaitTime at the bottom of dse_area_loop.
-   - To change the Luck: Adjust DSE_SPAWN_CHANCE. A 100 means a fight happens every single time the timer rings.
-   - To see what the "Brain" is thinking: Set DSE_DEBUG_MODE to 1. This will send yellow text messages to your chat box explaining every move the script makes.
+4. Best Practices for Maintenance
+    - Reverting: If logic becomes unstable, revert to Version 6.0. This is the confirmed "Solid Base."
+    - Monster Lists: To add monsters, edit the SpawnEncounter function. The engine will automatically handle the cleanup and transfer of any new ResRefs added there.
+    - Readability: Maintain the 300+ line count. The vertical spacing is not "bloat"—it is essential for identifying where one Phase ends and the next begins during live debugging.
 
-⚠️ Important Rules
-    1. The Tag is King: Every monster you want the system to recognize MUST have the tag DSE_SPAWN.
-    2. No Death Scripts Needed: You do not need to put anything in the monster's OnDeath slot. The Brain handles it!
-    3. Area Settings: Ensure your Area is set to "Active" or has players in it, otherwise the loop will safely shut itself down.
+This manual is now the definitive guide for your Engine. Would you like me to generate a "Changelog" for your records, or should we begin drafting Version 6.1 with new creature types?
 
 
 
@@ -64,11 +68,11 @@ Instalation
 This document serves as the "Wiring Diagram" for the Dynamic Spawn Engine (DSE). It identifies exactly where each script file connects to the Neverwinter Nights Toolset.
 📂 DSE System: Script Placement Guide
 Script Name	            Toolset Location	            Event Slot	            Description
-dse_inc	                  Script Editor	              N/A (Include)	          The "Settings" file. It is not placed in a slot; other scripts "pull" settings from it.
-dse_area_enter	         Area Properties              OnAreaEnter	          The "Doorman." It registers Bob and Bill and starts the Brain Loop.
-dse_area_exit	           Area Properties	            OnAreaExit	          The "Checkout." It notifies the system when a player leaves the map.
-dse_area_loop	            Script Editor	              N/A (Virtual)	        The "Brain." It is called by the Enter script and then runs itself on a timer.
-dse_spawn_action	        Script Editor	              N/A (Virtual)	        The "Muscle." It is called by the Brain to create and "Brand" monsters.
+dse_inc	                 Script Editor	           N/A (Include)	        The "Settings" file. It is not placed in a slot; other scripts "pull" settings from it.
+dse_area_enter	          Area Properties              OnAreaEnter	           The "Doorman." It registers Bob and Bill and starts the Brain Loop.
+dse_area_exit	          Area Properties	             OnAreaExit	           The "Checkout." It notifies the system when a player leaves the map.
+dse_area_loop	           Script Editor	           N/A (Virtual)	        The "Brain." It is called by the Enter script and then runs itself on a timer.
+dse_spawn_action	        Script Editor              N/A (Virtual)	        The "Muscle." It is called by the Brain to create and "Brand" monsters.
 
 🕹️ Non-Script Setup (Required)
 

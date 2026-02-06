@@ -1,0 +1,26 @@
+// =============================================================================
+// DSE AREA BOOTLOADER (dse_area_enter)
+// PURPOSE: REGISTERS PLAYERS AND STARTS THE DSE PULSE.
+// =============================================================================
+
+void main()
+{
+    object oPC = GetEnteringObject(); // Who just walked through the door?
+    object oArea = OBJECT_SELF; // The Area itself.
+
+    if (!GetIsPC(oPC)) return; // If it's not a player, ignore it.
+
+    // Calculate which VIP slot the player takes (e.g., VIP 1, VIP 2).
+    int nCount = GetLocalInt(oArea, "DSE_VIP_COUNT") + 1;
+    SetLocalInt(oArea, "DSE_VIP_COUNT", nCount);
+    SetLocalObject(oArea, "DSE_VIP_" + IntToString(nCount), oPC);
+
+    // If the engine isn't currently pulsing...
+    if (GetLocalInt(oArea, "DSE_ACTIVE") == FALSE)
+    {
+        SetLocalInt(oArea, "DSE_ACTIVE", TRUE); // Turn it ON.
+        ExecuteScript("dse_engine", oArea); // Start the first 120-second pulse.
+        
+        SendMessageToPC(oPC, "DSE: Engine Initialized."); // Confirm to the player.
+    }
+}
